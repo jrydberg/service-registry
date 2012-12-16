@@ -15,17 +15,19 @@ What it is not:
 
 * a coordination service
 
+
 ## The API
 
 Through this section we refer to the service registering its instance
 as "the client".
 
+
 ### Registering
 
 Each service instance that wants to make its presence known should
 update its instance entry every 30th second.  This is done via PUT
-request to a path that follows this format: `/service/<service>/<id>`
-with content like this:
+request to a path that follows this format: `/<service>/<id>` with
+content like this:
 
     {
       "site": "eu-1b",
@@ -40,19 +42,21 @@ with content like this:
 
 The `updated_at` field should contain a timestamp of when the last PUT
 request was performed.  The client is responsible for setting this
-field. `started_at` should be an estimate of when the instance was
-started.
+field.  Users of the registry can use this feel to detect instances
+that are not behaving correctly.  `started_at` should be an estimate
+of when the instance was started.
 
 The update request that the service instance do every 30th second also
 acts as a heartbeat signal to the registry.  If it has not received a
 request for T seconds it will assume the instance is dead and will
 remove it from the registry.
 
+
 ### Query Service Registry
 
 The most common query is look up all instances of a specific service.
-This is done by issuing a GET to `/service/<service>`.  The result
-looks something like this:
+This is done by issuing a GET to `/<service>`.  The result looks
+something like this:
 
     {
       "<instance>": {
@@ -69,23 +73,6 @@ looks something like this:
     }
 
 The result contains all registered instances for the service.  
-
-### Query Host Registry
-
-It is possible to lookup which services a specific host provides.
-Simply do a GET to `/host/<hostname>`:
-
-    {
-       "<service>": {
-         "<instance>": {
-         }
-       },
-       "<service>": {
-         ...
-       },
-       ...
-    }
-
 
 ## Internals
 
