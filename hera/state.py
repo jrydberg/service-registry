@@ -12,43 +12,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-TOMB = '!TOMBSTONE!'
+from collections import namedtuple, deque
+
+
+Delta = namedtuple('Delta', ['service', 'instance', 'blob', 'timestamp'])
+
+
+class CombinedState(object):
+    """View that combines multiple states into one."""
+
+    def __init__(self, states):
+        self.states = states
+        self.instances = {}
+    
+    def build(self):
+        self.instances.clear()
+        for state in self.states.itervalues():
+            for delta in state.iterdeltas():
+                existing = self.instances.setdefault(delta.service, {}).get(
+                    delta.instance)
+                if existing and existing.timestamp > delta.timestamp:
+                    delta = existing
+                self.instances[delta.service][delta.instance] = delta
+
+    def iterservice(self, service):
+        d = self.instances.get(service, {})
+        return d.values()
+
+    def deltas(self, timestamps):
+        deltas = {}
+        for name, timestamp in timestamps.items():
+            if name in self.states:
+                print "ITERDELTAS", name
+                deltas[name] = list(self.states[name].iterdeltas(int(timestamp)))
+        return deltas
 
 
 class State(object):
-    """Encapsulation of the service state that a node in the cluster
-    holds.
-
-    Items in the state are timestamped.
-    """
+    """State."""
 
     def __init__(self, clock):
         self.clock = clock
-        self.store = {}
+        self.deltas = deque()
 
-    def set(self, k, v, t=None):
-        if t is None:
-            t = self.clock.time()
-        self.store.set(k, (v, t))
+    def update(self, service, instance, blob, timestamp=None):
+        """Update a service instance record."""
+        if timestamp is None:
+            timestamp = int(self.clock.time() * 1000)
+        delta = Delta(service=service, instance=instance, blob=blob,
+                      timestamp=timestamp)
+        self.deltas.appendleft(delta)
 
-    def get(self, k, default=None):
-        v, t = self.store.get(k, (default, 0))
-        return v if v != TOMB else default
+    def iterdeltas(self, timestamp=0):
+        for delta in self.deltas:
+            if delta.timestamp > timestamp:
+                yield delta
 
-    def column(self, k):
-        return self.store.get(k)
-
-    def remove(self, k):
-        self.set(k, TOMB)
-
-    def iterdeltas(self, timestamp):
-        for k, (v, t) in self.store.iteritems():
-            if t > timestamp:
-                yield k, v, t
-
-    def iteritems(self):
-        for k, (v, t) in self.store.iteritems():
-            yield k, v
-
-    def keys(self):
-        return self.store.keys():
+    def expire(self, timestamp):
+        self.deltas = deque(delta for delta in self.deltas
+                            if delta.timestamp >= timestamp)

@@ -13,39 +13,32 @@
 # limitations under the License.
 
 
+import random
+
+from requests.exceptions import RequestException
+
 
 class Node(object):
     """Known state for a node in our cluster.  We do not maintain this
     state for the local node.
     """
 
-    def __init__(self, name, host, port, state, requests):
+    def __init__(self, name, host, port, state):
         self.name = name
         self.state = state
         self.host = host
         self.port = port
-        self.requests = requests
         self._last_timestamp = 0
 
     @property
     def last_timestamp(self):
-        for k, v, t in self.state.iterdeltas(self._last_timestamp):
-            self._last_timestamp = max(self._last_timestamp, t)
+        for delta in self.state.iterdeltas(self._last_timestamp):
+            self._last_timestamp = max(self._last_timestamp, delta.timestamp)
         return self._last_timestamp
 
-    def query(self, timestamps):
-        """Query remote node for deltas."""
-        response = self.requests.get('http://%s:%d/_deltas' % (
-                self.host, self.port), params=timestamps)
-        return response.json
-
-    def apply_delta(self, delta):
-        k, v, t = delta
-        self.state.set(k, v, t)
-
-    def produce_deltas(self, timestamp):
-        for delta in self.state.iterdeltas(timestamp):
-            yield self.name, delta
+    def apply_deltas(self, deltas):
+        for (service, instance, blob, timestamp) in deltas:
+            self.state.update(service, instance, blob, timestamp)
 
 
 class Cluster(object):
@@ -55,15 +48,25 @@ class Cluster(object):
        Note that this must not contain the local node.
     """
 
-    def __init__(self, name, nodes):
+    def __init__(self, name, nodes, requests):
         self.name = name
         self.nodes = nodes
+        self.requests = requests
+
+    def _query(self, node, timestamps):
+        """Query remote node for deltas."""
+        response = self.requests.get('http://%s:%d/_deltas' % (
+                node.host, node.port), params=timestamps)
+        return response.json
 
     def consume(self):
         """Talk to one or more peers and consume their deltas."""
         candidate = self._select_candidate()
         if candidate is not None:
-            self._apply_delta(candidate.query(self._collect_timestamps()))
+            try:
+                self._apply_deltas(self._query(candidate, self._collect_timestamps()))
+            except RequestException, err:
+                print "FEL", err
 
     def _select_candidate(self):
         candidates = self.nodes.values()
@@ -75,9 +78,9 @@ class Cluster(object):
             timestamps[name] = node.last_timestamp
         return timestamps
 
-    def _apply_deltas(self, deltas):
-        for name, delta in deltas:
+    def _apply_deltas(self, result):
+        for name, deltas in result.iteritems():
             if name not in self.nodes:
                 continue
-            self.nodes[name].apply_delta(delta)
+            self.nodes[name].apply_deltas(deltas)
     

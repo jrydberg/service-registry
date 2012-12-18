@@ -1,0 +1,4 @@
+PyYAML
+gevent
+Routes
+WebOb
