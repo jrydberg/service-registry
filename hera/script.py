@@ -46,13 +46,12 @@ def _purge_expired_deltas(clock, states, combined, liveness):
 class ServiceRegistryApp(object):
     """Namespace for the service registry application."""
 
-    def __init__(self, log, clock, config, name, port, cluster, requests=requests,
+    def __init__(self, log, clock, name, port, cluster, requests=requests,
                  liveness=5 * 60, gossip_interval=3, purge_interval=7):
         self.log = log
         self.clock = clock
-        self.config = config
-        self.name = name or config['name']
-        self.port = port or config['port']
+        self.name = name
+        self.port = port
         self.states = {}
         self.nodes = {}
         self.requests = requests
@@ -112,7 +111,7 @@ def main():
         logging.exception("failed reading config")
         sys.exit(1)
 
-    app = ServiceRegistryApp(logging.getLogger('app'), Clock(), config,
+    app = ServiceRegistryApp(logging.getLogger('app'), Clock(),
               options.name or config['name'],
               options.port or config['port'],
               config['cluster'])
