@@ -2,10 +2,9 @@ name: test-1
 port: 8080
 cluster:
   test-1:
-    host: kazoo-1
+    host: localhost
     port: 8080
   test-2:
-    host: kazoo-1
+    host: localhost
     port: 8081
 liveness: 300
-gossip-interval: 5

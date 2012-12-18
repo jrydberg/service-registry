@@ -10,6 +10,22 @@ What it tries to be:
 * scalable, and
 * fault tolerant
 
+And the way it tries to be that:
+
+* only tries to solves service registration and discovery problem,
+* data is replicated between cluster nodes, 
+* the service registry and its clients are losely coupled in a
+  disconnected manner (no persistent connections)
+* uses a gossip protocol to exchange data between nodes in the cluster
+
+# How to run 
+
+Simple as 1-2-3:
+
+    $ cp example.conf hera.yml
+    $ PYTHONPATH=$PWD bin/hera -c hera.yml -n test-1 -p 8080 &
+    $ PYTHONPATH=$PWD bin/hera -c hera.yml -n test-2 -p 8081 &
+
 # Configuration:
 
 Below is an example configuration:
