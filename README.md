@@ -22,9 +22,10 @@ And the way it tries to be that:
 
 Simple as 1-2-3:
 
-    $ cp example.conf hera.yml
     $ PYTHONPATH=$PWD bin/hera -c hera.yml -n test-1 -p 8080 &
     $ PYTHONPATH=$PWD bin/hera -c hera.yml -n test-2 -p 8081 &
+
+Now you have two instances running, hopefully gossiping changes.
 
 # Configuration:
 
