@@ -60,7 +60,8 @@ recommend something along the following lines:
 The `updated_at` field should contain a timestamp of when the last PUT
 request was performed.  The client is responsible for setting this
 field.  Users of the registry can use this field to detect instances
-that has stopped updating its entry.
+that has stopped updating its entry, but before they have been expired
+based on the `liveness` parameter.
 
 Other information that can be of interest to communicate via the
 instance entry:
@@ -114,8 +115,8 @@ as "the client".
 In short, a client should register itself with the service registry
 server, and then with regular intervals update the entry to make sure
 that it is not expired from the registry.  The interval should be set
-with the `liveness` parameter in thought.  For example, if `liveness`
-is set to 5 minutes, a good update interval can be every minute.
+with the `liveness` parameter in mind.  For example, if `liveness` is
+set to 5 minutes, a good update interval can be every minute.
 
 If there are mutliple machines in the service registry cluster, the
 client should first and foremost use the node that is located in the
@@ -132,7 +133,10 @@ should prefer to talk to nodes in the same data center.
 
 The client should do a initial query to get the seed set of service
 instances.  After that, it should regulary re-query the instance set.
-The re-query intervals should be determined by SLAs.
+The re-query intervals should be determined by SLAs, `liveness` and
+update intervals.  The interval can also be influenced by the current
+state; if there's no instances available, re-query more often.  If
+the set is stable, maybe back off and do not query that often.
 
 # Internals
 
