@@ -3,18 +3,39 @@
 This is a simple service registry that can be used in a distributed
 service oriented architecture.
 
-It is designed to be simple, scalable and fault tolerant.
+What it tries to be:
 
-What it is:
+* simple,
+* eventually consistent,
+* scalable, and
+* fault tolerant
 
-* simple
-* eventually consistent
-* scalable
+# Configuration:
 
-What it is not:
+Below is an example configuration:
 
-* a coordination service
+    name: sr-sto-1
+    port: 3222
+    liveness: 300
+    cluster:
+      sr-sto-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
+      sr-ash-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
+      sr-lon-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
 
+Here's a short description of the variables:
+
+* `name` defines the name of the local node in the cluster.  There must be
+  a node in `cluster` for this node.
+* `port` sets the listen port of the service.
+* `liveness` specifies for how long a service instance should live before
+  being expired, unless updated.
+* `cluster´ defines the replication cluster.
 
 ## The API
 
@@ -112,33 +133,6 @@ should prefer to talk to nodes in the same data center.
 The client should do a initial query to get the seed set of service
 instances.  After that, it should regulary re-query the instance set.
 The re-query intervals should be determined by SLAs.
-
-# Configuration:
-
-Below is an example configuration:
-
-    name: sr-sto-1
-    port: 3222
-    liveness: 300
-    cluster:
-      sr-sto-1:
-        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
-        port: 3222
-      sr-ash-1:
-        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
-        port: 3222
-      sr-lon-1:
-        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
-        port: 3222
-
-Here's a short description of the variables:
-
-* `name` defines the name of the local node in the cluster.  There must be
-  a node in `cluster` for this node.
-* `port` sets the listen port of the service.
-* `liveness` specifies for how long a service instance should live before
-  being expired, unless updated.
-* `cluster´ defines the replication cluster.
 
 # Internals
 
