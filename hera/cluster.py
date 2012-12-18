@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import logging
 import random
 
 from requests.exceptions import RequestException
+
+log = logging.getLogger(__name__)
 
 
 class Node(object):
@@ -66,7 +68,7 @@ class Cluster(object):
             try:
                 self._apply_deltas(self._query(candidate, self._collect_timestamps()))
             except RequestException, err:
-                print "FEL", err
+                log.exception("failed to gossip with %s" % (candidate,))
 
     def _select_candidate(self):
         candidates = self.nodes.values()

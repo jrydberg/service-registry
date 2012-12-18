@@ -20,29 +20,49 @@ from optparse import OptionParser
 import time
 import yaml
 import requests
+import logging
+import sys
 
 from gevent.pywsgi import WSGIServer
+from glock.clock import Clock
+from glock.task import LoopingCall
 
 from hera.cluster import Cluster, Node
 from hera.state import State, CombinedState
 from hera.api import RestApi
 
 
+def _consume_peer_state(cluster, combined):
+    cluster.consume()
+    combined.build()
+
+
+def _purge_expired_deltas(clock, states, combined, liveness):
+    for state in states.itervalues():
+        state.expire(int(clock.time() - liveness) * 1000)
+    combined.build()
+
 
 class ServiceRegistryApp(object):
     """Namespace for the service registry application."""
 
-    def __init__(self, config, name, port, requests=requests):
+    def __init__(self, log, clock, config, name, port, cluster, requests=requests,
+                 liveness=5 * 60, gossip_interval=3, purge_interval=7):
+        self.log = log
+        self.clock = clock
         self.config = config
         self.name = name or config['name']
         self.port = port or config['port']
         self.states = {}
         self.nodes = {}
         self.requests = requests
+        self._gossip_interval = gossip_interval
+        self._purge_interval = purge_interval
+        self._liveness = liveness
+        self.build(cluster)
 
-    def start(self):
-        """."""
-        for name, spec in self.config['cluster'].iteritems():
+    def build(self, config):
+        for name, spec in config.iteritems():
             self.states[name] = State(time)
             if name != self.name:
                 self.nodes[name] = Node(name, spec['host'],
@@ -50,34 +70,26 @@ class ServiceRegistryApp(object):
         self.cluster = Cluster(self.name, self.nodes, self.requests)
         self.combined_state = CombinedState(self.states)
 
-        # the local state, our state:
-        gevent.spawn(self._rebuild_combined_state, self.combined_state,
-                     time, 3)
-        gevent.spawn(self._purge_expired_deltas, self.states.values(),
-                     time, 7, self.config.get('liveness', 5 * 60))
-        gevent.spawn(self._consume_peer_state, self.cluster, time, self.config.get(
-                'replication-interval', 5))
-
+        self._consume_peer_state_task = LoopingCall(
+            self.clock, _consume_peer_state, self.cluster, self.combined_state)
+        self._purge_expired_deltas_task = LoopingCall(
+            self.clock, _purge_expired_deltas, self.clock, self.states,
+            self.combined_state, self._liveness)
         rest_api = RestApi(self.states[self.name], self.combined_state)
-        server = WSGIServer(('', self.port), rest_api)
-        server.serve_forever()
+        self.server = WSGIServer(('', self.port), rest_api)
 
-    def _consume_peer_state(self, cluster, time, interval):
-        while True:
-            cluster.consume()
-            time.sleep(interval)
+    def start(self):
+        self.log.info("starting Hera node %s with the following cluster" % (
+                self.name,))
+        for name, node in self.nodes.iteritems():
+            self.log.info("  %s: %r" % (name, node))
 
-    def _rebuild_combined_state(self, combined_state, time, interval):
-        while True:
-            combined_state.build()
-            time.sleep(interval)
+        for interval, call in (
+            (self._gossip_interval, self._consume_peer_state_task),
+            (self._purge_interval, self._purge_expired_deltas_task)):
+            call.start(interval)
 
-    def _purge_expired_deltas(self, states, time, interval, liveness):
-        """."""
-        while True:
-            for state in states:
-                state.expire(int(time.time() - liveness) * 1000)
-            time.sleep(interval)
+        self.server.serve_forever()
 
 
 def main():
@@ -90,12 +102,18 @@ def main():
                       help="node port", metavar="PORT")
     (options, args) = parser.parse_args()
 
-    with open(options.config) as fp:
-        config = yaml.load(fp)
+    format = '%(asctime)s %(name)s %(levelname)s: %(message)s'
+    logging.basicConfig(format=format, level=logging.DEBUG)
 
-    app = ServiceRegistryApp(config, options.name, options.port)
+    try:
+        with open(options.config) as fp:
+            config = yaml.load(fp)
+    except (OSError, IOError), err:
+        logging.exception("failed reading config")
+        sys.exit(1)
+
+    app = ServiceRegistryApp(logging.getLogger('app'), Clock(), config,
+              options.name or config['name'],
+              options.port or config['port'],
+              config['cluster'])
     app.start()
-
-
-if __name__ == '__main__':
-    main()
