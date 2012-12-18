@@ -52,6 +52,10 @@ The update request that the service instance do acts as a heartbeat
 signal to the registry.  If an update request has not been received
 for `liveness` seconds the entry will be expired from the registry.
 
+Example:
+
+    $ curl -XPUT -d '{"host":"10.1.1.1", "port": 12345, "updated_at": "2012-12-18T13:27:01Z"}' http://localhost:8080/storage/1f11bbbb-df7a-47c5-8ba7-662f70261673
+
 ### Query Service Registry
 
 The most common query is look up all instances of a specific service.
@@ -68,7 +72,16 @@ something like this:
     }
 
 The result contains all registered instances for the service, in an
-unspecified order.
+unspecified order.   Example:
+
+    $ curl "http://localhost:8080/storage?pretty"
+    {
+      "1f11bbbb-df7a-47c5-8ba7-662f70261673": {
+        "host": "10.1.1.1", 
+        "port": 12345, 
+        "updated_at": "2012-12-18T13:27:01Z"
+      }
+    }
 
 # Usage Patterns
 
