@@ -21,33 +21,36 @@ What it is not:
 Through this section we refer to the service registering its instance
 as "the client".
 
-
 ### Registering
 
 Each service instance that wants to make its presence known should
-update its instance entry every 30th second.  This is done via PUT
-request to a path that follows this format: `/<service>/<id>` with
-content like this:
+update its instance entry regulary.  This is done via PUT request to
+`/<service>/<id>`.  The service registry do not enforce a specific
+content format except that it has to be a JSON object.  What the
+object contains is up to the users of the system to decide, but we
+recommend something along the following lines:
 
     {
-      "site": "eu-1b",
       "host": "ec2-NN-NN-NN-NN.compute-1.amazonaws.com",
       "port": 1232,
       "updated_at": "<iso 8601 format>",
-      "started_at": "<iso 8601 format>",
     }
 
 The `updated_at` field should contain a timestamp of when the last PUT
 request was performed.  The client is responsible for setting this
-field.  Users of the registry can use this feel to detect instances
-that are not behaving correctly.  `started_at` should be an estimate
-of when the instance was started.
+field.  Users of the registry can use this field to detect instances
+that has stopped updating its entry.
 
-The update request that the service instance do every 30th second also
-acts as a heartbeat signal to the registry.  If it has not received a
-request for T seconds it will assume the instance is dead and will
-remove it from the registry.
+Other information that can be of interest to communicate via the
+instance entry:
 
+* current instance status/load
+* data center location
+* software version
+
+The update request that the service instance do acts as a heartbeat
+signal to the registry.  If an update request has not been received
+for `liveness` seconds the entry will be expired from the registry.
 
 ### Query Service Registry
 
@@ -57,27 +60,83 @@ something like this:
 
     {
       "<instance>": {
-        "site": "eu-1b",
         "host": "ec2-NN-NN-NN-NN.compute-1.amazonaws.com",
         "port": 1232,
         "updated_at": "<iso 8601 format>",
-        "started_at": "<iso 8601 format>",
       },
       ...
     }
 
-The result contains all registered instances for the service.  
+The result contains all registered instances for the service, in an
+unspecified order.
 
-## Internals
+# Usage Patterns
+
+## Writing a Service
+
+Through this section we refer to the service registering its instance
+as "the client".
+
+In short, a client should register itself with the service registry
+server, and then with regular intervals update the entry to make sure
+that it is not expired from the registry.  The interval should be set
+with the `liveness` parameter in thought.  For example, if `liveness`
+is set to 5 minutes, a good update interval can be every minute.
+
+If there are mutliple machines in the service registry cluster, the
+client should first and foremost use the node that is located in the
+same data center.  If that fails, any of the other nodes can be used
+to update the entry.
+
+## Writing a Client
+
+Through this section we refer to an entity that wants to talk to
+services as "the client".
+
+The client can query any node in the service registry cluster, but
+should prefer to talk to nodes in the same data center.
+
+The client should do a initial query to get the seed set of service
+instances.  After that, it should regulary re-query the instance set.
+The re-query intervals should be determined by SLAs.
+
+# Configuration:
+
+Below is an example configuration:
+
+    name: sr-sto-1
+    port: 3222
+    liveness: 300
+    cluster:
+      sr-sto-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
+      sr-ash-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
+      sr-lon-1:
+        host: ec2-NN-NN-NN-NN.compute-1.amazonaws.com
+        port: 3222
+
+Here's a short description of the variables:
+
+* `name` defines the name of the local node in the cluster.  There must be
+  a node in `cluster` for this node.
+* `port` sets the listen port of the service.
+* `liveness` specifies for how long a service instance should live before
+  being expired, unless updated.
+* `cluster´ defines the replication cluster.
+
+# Internals
 
 The instances of the service registry runs a gossip-like protocol to
-exchange data.  All state is replicated to all peers through this
-protocol.
+exchange data.  How often the peers gossip is controlled by the
+`gossip-interval` config variable.
 
-Each node has a complete replica of its sibling state.  A node state
+Each node has a complete replica of its siblings state.  A node state
 is made up out of `(service instance, timestamp)` pairs.  The
 timestamp identifies the last time the instance information was
-updated.  It is used to filter out old writes and to resolve
+updated.  It is used to filter out old instances and to resolve
 conflicting writes (LWW).
 
 If we look at the configuration:
@@ -109,12 +168,17 @@ in the cluster.  The node should respond with a set of deltas that can
 be applied to the node states.  An example from sr-sto-1 to sr-lon-1
 may look like this:
 
-   GET /_deltas?sr-lon-1=1322321&sr-ash-1=1322212
-   ...
+    GET /_deltas?sr-lon-1=T1&sr-ash-1=T2
+    ...
 
 Interpret this as `sr-sto-1` tries to get deltas for lon-1 and ash-1,
 but only for stuff that was written after the two specified
-timestamps.
+timestamps.  The response looks something like this:
+
+    {
+      "sr-lon-1": [["srv1", "id1", {...}, 1355833258675], ...],
+      "sr-ash-1": [["srv1", "id2", {...}, 1355833268199], ...]
+    }
 
 
 ## Failure Conditions
